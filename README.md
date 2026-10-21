@@ -82,7 +82,7 @@ TEST_PG_ADMIN_URL=postgres://postgres@127.0.0.1:54329/postgres pnpm test
 1. Apply `db/migrations/*.sql` in order to the Supabase project.
 2. Set the `app_server` password: `alter role app_server with login password '…';`
 3. Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`
-   (transaction pooler, port 6543, user `app_server.<project-ref>`), `CRON_SECRET`.
+   (session pooler, port 5432, user `app_server.<project-ref>`), `CRON_SECRET`.
 4. First admin: `select app_private.create_auth_user('you@example.com', '<password>');` then insert the
    returned id into `app_users` with role `admin`.
 

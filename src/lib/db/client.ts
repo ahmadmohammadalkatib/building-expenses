@@ -7,8 +7,10 @@ export type Db = Sql | Tx;
 export function createSql(url: string, opts: { max?: number } = {}): Sql {
   return postgres(url, {
     max: opts.max ?? 5,
-    prepare: false, // required for Supabase's transaction pooler
-    idle_timeout: 20,
+    prepare: false,
+    idle_timeout: 10, // session pooler: release connections quickly between serverless invocations
+    max_lifetime: 60 * 5,
+    connection: { statement_timeout: 15000, application_name: "building-expenses" },
     connect_timeout: 15,
     onnotice: () => {},
     types: {
@@ -36,7 +38,7 @@ export function db(): Sql {
   if (!globalThis.__sql) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    globalThis.__sql = createSql(url, { max: process.env.NODE_ENV === "production" ? 3 : 5 });
+    globalThis.__sql = createSql(url, { max: process.env.NODE_ENV === "production" ? 2 : 5 });
   }
   return globalThis.__sql;
 }
