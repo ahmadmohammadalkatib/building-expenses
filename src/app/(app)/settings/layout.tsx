@@ -20,7 +20,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           { href: "/settings/users", label: t.settings.users },
         ]}
       />
-      <div className="mt-6">{children}</div>
+      <div className="mt-8">{children}</div>
     </>
   );
 }

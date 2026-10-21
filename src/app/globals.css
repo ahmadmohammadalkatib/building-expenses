@@ -2,45 +2,70 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Neutral zinc surfaces, one indigo accent, semantic colours only for money
+   states. Every component reads these through the Tailwind theme below. */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
-  --border: #e3e6eb;
-  --text: #17202c;
-  --muted: #5d6878;
-  --primary: #1f5f8b;
+  --surface-2: #f4f4f5;
+  --surface-3: #ebebee;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --text: #18181b;
+  --text-2: #3f3f46;
+  --muted: #66666f;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
   --primary-ink: #ffffff;
-  --primary-soft: #e6f0f7;
-  --success: #1c7c4d;
-  --success-soft: #e5f4ec;
-  --warning: #9a5b00;
-  --warning-soft: #fdf1dc;
-  --danger: #b42318;
-  --danger-soft: #fdeceb;
-  --chart-1: #1f5f8b;
-  --chart-2: #d0802b;
+  --primary-soft: #eef2ff;
+  --primary-soft-ink: #4338ca;
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #be123c;
+  --danger-soft: #fff1f2;
+  --danger-solid: #be123c;
+  --chart-1: #4f46e5;
+  --chart-2: #a1a1aa;
+  --sh-xs: 0 1px 2px rgb(16 16 24 / 0.05);
+  --sh-sm: 0 1px 2px rgb(16 16 24 / 0.04), 0 1px 3px rgb(16 16 24 / 0.06);
+  --sh-md: 0 2px 4px rgb(16 16 24 / 0.04), 0 6px 16px rgb(16 16 24 / 0.08);
+  --sh-lg: 0 8px 24px rgb(16 16 24 / 0.12), 0 24px 64px rgb(16 16 24 / 0.16);
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f141a;
-    --surface: #171e26;
-    --surface-2: #1e2731;
-    --border: #2a3542;
-    --text: #e7ecf2;
-    --muted: #9aa7b6;
-    --primary: #5fa8d8;
-    --primary-ink: #0b1620;
-    --primary-soft: #18324a;
-    --success: #4cc38a;
-    --success-soft: #133325;
-    --warning: #f0b45a;
-    --warning-soft: #3a2a10;
-    --danger: #f2877d;
-    --danger-soft: #3d1a17;
-    --chart-1: #5fa8d8;
-    --chart-2: #f0a35a;
+    --bg: #0c0c0f;
+    --surface: #141418;
+    --surface-2: #1b1b20;
+    --surface-3: #25252b;
+    --border: #27272d;
+    --border-strong: #35353d;
+    --text: #f4f4f5;
+    --text-2: #d4d4d8;
+    --muted: #a1a1aa;
+    --primary: #818cf8;
+    --primary-hover: #a5b4fc;
+    --primary-ink: #0f0f23;
+    --primary-soft: #1e1b4b;
+    --primary-soft-ink: #c7d2fe;
+    --success: #34d399;
+    --success-soft: #052e22;
+    --warning: #fbbf24;
+    --warning-soft: #2b1d06;
+    --danger: #fb7185;
+    --danger-soft: #3b0a17;
+    --danger-solid: #e11d48;
+    --chart-1: #818cf8;
+    --chart-2: #52525b;
+    --sh-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+    --sh-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.25);
+    --sh-md: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 20px rgb(0 0 0 / 0.35);
+    --sh-lg: 0 8px 24px rgb(0 0 0 / 0.45), 0 24px 64px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
   }
 }
 
@@ -48,19 +73,47 @@
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-text: var(--text);
+  --color-text-2: var(--text-2);
   --color-muted: var(--muted);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-ink: var(--primary-ink);
   --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-ink: var(--primary-soft-ink);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-solid: var(--danger-solid);
+  --shadow-xs: var(--sh-xs);
+  --shadow-sm: var(--sh-sm);
+  --shadow-md: var(--sh-md);
+  --shadow-lg: var(--sh-lg);
   --font-sans: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, "Noto Sans Arabic", system-ui, sans-serif;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-rise: rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-start: slide-start 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-end: slide-end 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+/* Drawer slides in from the inline-start edge (right in RTL, left in LTR) */
+@keyframes slide-start {
+  from { transform: translateX(-100%); }
+}
+@keyframes slide-end {
+  from { transform: translateX(100%); }
 }
 
 html,
@@ -71,7 +124,23 @@ body {
 
 body {
   font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+
+/* One consistent keyboard focus treatment for links, summaries and custom controls */
+:where(a, summary, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* Numbers stay readable left-to-right inside RTL text */
@@ -86,6 +155,96 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
+/* Native select: custom chevron that follows the reading direction */
+.select-chevron {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 1rem;
+}
+[dir="rtl"] .select-chevron {
+  background-position: left 0.65rem center;
+}
+
+/* Native month/date pickers inherit the theme */
+::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  ::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+/* Thin, quiet scrollbars for horizontally scrolling tables and tab strips */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Modal dialogs (native <dialog>) */
+dialog.modal {
+  margin: auto;
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: visible;
+}
+/* ::backdrop doesn't inherit custom properties in older Chromium, so the overlay colour is literal */
+dialog.modal::backdrop,
+dialog.drawer::backdrop {
+  background: rgb(9 9 11 / 0.45);
+  animation: fade-in 160ms ease-out;
+}
+@media (prefers-color-scheme: dark) {
+  dialog.modal::backdrop,
+  dialog.drawer::backdrop {
+    background: rgb(0 0 0 / 0.6);
+  }
+}
+dialog.modal[open] > .modal-panel {
+  animation: rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Mobile navigation drawer (native <dialog>), pinned to the inline-start edge */
+dialog.drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+  margin: 0;
+  width: min(18rem, 85vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  border: 0;
+  border-inline-end: 1px solid var(--border);
+  background: var(--bg);
+  color: inherit;
+  box-shadow: var(--sh-lg);
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 @media print {
@@ -104,5 +263,6 @@ textarea {
   main {
     padding: 0 !important;
     margin: 0 !important;
+    max-width: none !important;
   }
 }

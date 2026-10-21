@@ -17,9 +17,9 @@ export default async function NewExpensePage() {
   const [d0, s, cats] = await Promise.all([today(sql), getSettings(sql), listCategories(sql)]);
   return (
     <>
-      <PageHeader title={t.expenses.new} />
+      <PageHeader title={t.expenses.new} back={{ href: "/expenses", label: t.expenses.title }} />
       {!s.opening_date ? (
-        <div className="space-y-3">
+        <div className="max-w-2xl space-y-4">
           <Alert tone="warning">{t.errors.opening_not_set}</Alert>
           <LinkButton href="/settings">{t.dashboard.setupCta}</LinkButton>
         </div>
@@ -28,12 +28,14 @@ export default async function NewExpensePage() {
           <ActionForm action={recordExpenseAction}>
             <input type="hidden" name="idempotency_key" value={newKey()} />
             <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={`${t.common.amount} (₪)`}>
+                <Input name="amount" inputMode="decimal" required dir="ltr" autoFocus placeholder="0.00" className="text-base font-medium" />
+              </Field>
               <Field label={t.expenses.category}>
                 <Select name="category_id" required>
                   {cats.map((c) => <option key={c.id} value={c.id}>{locale === "ar" ? c.name_ar : c.name_en || c.name_ar}</option>)}
                 </Select>
               </Field>
-              <Field label={`${t.common.amount} (₪)`}><Input name="amount" inputMode="decimal" required dir="ltr" autoFocus /></Field>
               <Field label={t.common.date}><Input name="date" type="date" defaultValue={d0} max={d0} required /></Field>
               <Field label={t.common.method}>
                 <Select name="method" defaultValue="cash">
@@ -47,7 +49,10 @@ export default async function NewExpensePage() {
             <Field label={t.expenses.attachment} help={t.expenses.attachmentHelp}>
               <Input name="attachment" type="file" accept="image/*,application/pdf" />
             </Field>
-            <SubmitButton>{t.common.save}</SubmitButton>
+            <div className="flex justify-end gap-2 border-t border-border pt-4">
+              <LinkButton href="/expenses" variant="secondary">{t.common.cancel}</LinkButton>
+              <SubmitButton>{t.common.save}</SubmitButton>
+            </div>
           </ActionForm>
         </Card>
       )}

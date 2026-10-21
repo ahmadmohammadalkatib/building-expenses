@@ -23,9 +23,9 @@ export default async function NewPaymentPage({ searchParams }: { searchParams: P
   const apts = [...active, ...archived.filter((a) => a.outstanding > 0)];
   return (
     <>
-      <PageHeader title={t.payments.new} />
+      <PageHeader title={t.payments.new} back={{ href: "/payments", label: t.payments.title }} />
       {!s.opening_date ? (
-        <div className="space-y-3">
+        <div className="max-w-2xl space-y-4">
           <Alert tone="warning">{t.errors.opening_not_set}</Alert>
           <LinkButton href="/settings">{t.dashboard.setupCta}</LinkButton>
         </div>
@@ -46,6 +46,7 @@ export default async function NewPaymentPage({ searchParams }: { searchParams: P
             reference: t.common.reference,
             notes: t.common.notes,
             submit: t.payments.new,
+            cancel: t.common.cancel,
             preview: t.payments.preview,
             previewHelp: t.payments.previewHelp,
             willCredit: t.payments.willCredit,

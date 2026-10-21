@@ -8,8 +8,8 @@ export function ChargeStatus({ t, state, voided }: { t: Dict; state: ChargeState
   const tone = state.status === "paid" ? "success" : state.status === "partial" ? "warning" : "neutral";
   return (
     <span className="inline-flex flex-wrap gap-1">
-      <Badge tone={tone}>{t.dues.statuses[state.status]}</Badge>
-      {state.overdue ? <Badge tone="danger">{t.dues.statuses.overdue}</Badge> : null}
+      <Badge tone={tone} dot>{t.dues.statuses[state.status]}</Badge>
+      {state.overdue ? <Badge tone="danger" dot>{t.dues.statuses.overdue}</Badge> : null}
     </span>
   );
 }

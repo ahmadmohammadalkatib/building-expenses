@@ -15,9 +15,10 @@ export default async function MonthlyReport({ searchParams }: { searchParams: Pr
   const [d0, s] = await Promise.all([today(sql), getSettings(sql)]);
   const { month = d0.slice(0, 7) } = await searchParams;
   const r = await monthlySummary(sql, `${month}-01`);
+  // Ledger-style rows: subtotal lines get a top rule and stronger weight
   const row = (label: string, v: number, strong = false, sign = "") => (
-    <tr className={strong ? "font-semibold" : ""}>
-      <Td>{label}</Td>
+    <tr className={strong ? "font-semibold [&>td]:border-t [&>td]:border-border-strong [&>td]:bg-surface-2/60" : ""}>
+      <Td className={strong ? "" : "text-text-2"}>{label}</Td>
       <Td className="text-end"><Num>{sign}{f.money(v)}</Num></Td>
     </tr>
   );
@@ -27,10 +28,10 @@ export default async function MonthlyReport({ searchParams }: { searchParams: Pr
       building={s.building_name}
       generatedOn={f.date(d0)}
       csvHref={`/api/export/monthly?month=${month}`}
-      labels={{ print: t.common.print, csv: t.common.exportCsv, generatedOn: t.reports.generatedOn }}
+      labels={{ print: t.common.print, csv: t.common.exportCsv, generatedOn: t.reports.generatedOn, reports: t.reports.title }}
       filters={
-        <form className="flex items-end gap-2">
-          <Field label={t.common.month}><Input name="month" type="month" defaultValue={month} /></Field>
+        <form className="flex flex-wrap items-end gap-3">
+          <Field label={t.common.month} className="w-full sm:w-48"><Input name="month" type="month" defaultValue={month} /></Field>
           <Button type="submit" variant="secondary">{t.common.apply}</Button>
         </form>
       }
@@ -38,7 +39,7 @@ export default async function MonthlyReport({ searchParams }: { searchParams: Pr
       {r.beforeOpening ? <Alert tone="warning">{t.reports.beforeOpening}</Alert> : null}
       <Alert tone="info">{t.reports.neverAdd}</Alert>
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card title={t.reports.cashSection}>
+        <Card title={t.reports.cashSection} flush>
           <Table>
             <tbody>
               {row(t.reports.openingCash, r.cash.opening)}
@@ -48,7 +49,7 @@ export default async function MonthlyReport({ searchParams }: { searchParams: Pr
             </tbody>
           </Table>
         </Card>
-        <Card title={t.reports.duesSection}>
+        <Card title={t.reports.duesSection} flush>
           <Table>
             <tbody>
               {row(t.reports.openingDues, r.dues.opening)}
@@ -61,15 +62,22 @@ export default async function MonthlyReport({ searchParams }: { searchParams: Pr
           </Table>
         </Card>
       </div>
-      <Card title={t.reports.byCategory}>
+      <Card title={t.reports.byCategory} flush>
         <Table>
-          <thead><tr><Th>{t.expenses.category}</Th><Th className="text-end">{t.common.amount}</Th></tr></thead>
+          <thead>
+            <tr><Th>{t.expenses.category}</Th><Th className="text-end">{t.common.amount}</Th></tr>
+          </thead>
           <tbody>
             {r.byCategory.map((c) => (
-              <tr key={c.name_ar}><Td>{locale === "ar" ? c.name_ar : c.name_en || c.name_ar}</Td><Td className="text-end"><Num>{f.money(c.total)}</Num></Td></tr>
+              <tr key={c.name_ar}>
+                <Td className="text-text-2">{locale === "ar" ? c.name_ar : c.name_en || c.name_ar}</Td>
+                <Td className="text-end"><Num>{f.money(c.total)}</Num></Td>
+              </tr>
             ))}
-            <tr className="font-semibold"><Td>{t.common.total}</Td><Td className="text-end"><Num>{f.money(r.cash.expenses)}</Num></Td></tr>
           </tbody>
+          <tfoot>
+            <tr><Td>{t.common.total}</Td><Td className="text-end"><Num>{f.money(r.cash.expenses)}</Num></Td></tr>
+          </tfoot>
         </Table>
       </Card>
     </ReportShell>

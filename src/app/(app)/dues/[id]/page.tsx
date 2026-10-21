@@ -6,9 +6,11 @@ import { getDict } from "@/lib/i18n";
 import { formatters } from "@/lib/format";
 import { today } from "@/lib/services/common";
 import { chargeState } from "@/lib/core/accounting";
-import { ActionForm, Disclosure, SubmitButton } from "@/components/forms";
-import { Alert, Badge, Card, Empty, Field, Input, Num, PageHeader, Select, Stat, Table, Td, Th } from "@/components/ui";
+import { ActionForm, SubmitButton } from "@/components/forms";
+import { Dialog } from "@/components/dialog";
+import { Alert, Badge, Card, Empty, Field, Input, LINK, Num, PageHeader, Select, Stat, Table, Td, Th } from "@/components/ui";
 import { ChargeStatus } from "@/components/status";
+import { EditIcon, PlusIcon, VoidIcon } from "@/components/icons";
 import { adjustAction, editChargeAction, voidAdjustmentAction, voidChargeAction } from "../actions";
 
 export default async function ChargePage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,36 +36,70 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
   return (
     <>
       <PageHeader
+        back={{ href: "/dues", label: t.dues.title }}
         title={`${t.dues.kinds[c.kind as keyof typeof t.dues.kinds]} — ${f.month(c.billing_month)}`}
         subtitle={
-          <span className="flex flex-wrap items-center gap-2">
-            <Link className="text-primary" href={`/apartments/${c.apartment_id}`}>{t.common.apartment} {c.number}</Link>
-            <span>· {t.dues.dueDate}: {f.date(c.due_date)}</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <Link className={LINK} href={`/apartments/${c.apartment_id}`}>{t.common.apartment} {c.number}</Link>
+            <span aria-hidden>·</span>
+            <span>{t.dues.dueDate}: {f.date(c.due_date)}</span>
             <ChargeStatus t={t} state={state} voided={c.status === "voided"} />
           </span>
         }
+        actions={
+          canEdit ? (
+            <>
+              <Dialog label={t.dues.deleteCharge} icon={<VoidIcon />} variant="dangerSoft" tone="danger" title={t.dues.deleteCharge} description={t.dues.voidChargeHelp} closeLabel={t.common.close}>
+                <ActionForm action={voidChargeAction}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <Field label={t.common.voidReason}><Input name="reason" required /></Field>
+                  <div className="flex justify-end"><SubmitButton variant="danger">{t.common.voidConfirm}</SubmitButton></div>
+                </ActionForm>
+              </Dialog>
+              <Dialog label={t.dues.editCharge} icon={<EditIcon />} title={t.dues.editCharge} description={t.dues.editChargeHelp} closeLabel={t.common.close}>
+                <ActionForm action={editChargeAction}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label={`${t.common.amount} (₪)`}><Input name="amount" inputMode="decimal" required dir="ltr" defaultValue={f.plain(c.amount)} /></Field>
+                    <Field label={t.dues.dueDate}><Input name="due_date" type="date" required defaultValue={c.due_date} /></Field>
+                  </div>
+                  <Field label={t.common.description}><Input name="description" defaultValue={c.description} /></Field>
+                  <Field label={t.dues.reasonIfAmount}><Input name="reason" /></Field>
+                  <div className="flex justify-end"><SubmitButton>{t.common.save}</SubmitButton></div>
+                </ActionForm>
+              </Dialog>
+            </>
+          ) : null
+        }
       />
       <div className="space-y-6">
-        {c.status === "voided" ? <Alert tone="danger">{t.common.voided}: {c.void_reason}</Alert> : null}
-        {c.description ? <p className="text-sm">{c.description}</p> : null}
-        <div className="grid gap-3 sm:grid-cols-4">
+        {c.status === "voided" ? <Alert tone="danger" title={t.common.voided}>{c.void_reason}</Alert> : null}
+        {c.description ? <p className="text-sm text-text-2">{c.description}</p> : null}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label={t.common.amount} value={<Num>{f.money(c.amount)}</Num>} />
           <Stat label={t.dues.paid} value={<Num>{f.money(c.paid)}</Num>} />
           <Stat label={t.dues.adjusted} value={<Num>{f.money(c.adjusted)}</Num>} />
           <Stat label={t.dues.outstanding} value={<Num>{f.money(c.outstanding)}</Num>} tone={c.outstanding > 0 ? "danger" : "success"} />
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title={t.dues.allocations}>
+          <Card title={t.dues.allocations} flush>
             {allocations.length ? (
               <Table>
-                <thead><tr><Th>{t.payments.receiptNo}</Th><Th>{t.common.date}</Th><Th className="text-end">{t.common.amount}</Th><Th /></tr></thead>
+                <thead>
+                  <tr>
+                    <Th>{t.payments.receiptNo}</Th>
+                    <Th>{t.common.date}</Th>
+                    <Th className="text-end">{t.common.amount}</Th>
+                    <Th><span className="sr-only">{t.common.status}</span></Th>
+                  </tr>
+                </thead>
                 <tbody>
                   {allocations.map((a) => (
                     <tr key={a.id} className={a.released_at || a.pstatus === "voided" ? "text-muted line-through" : ""}>
-                      <Td><Link className="text-primary" href={`/payments/${a.payment_id}`}><Num>{a.receipt_no ?? t.payments.openingCredit}</Num></Link></Td>
-                      <Td>{f.date(a.effective_date)}</Td>
+                      <Td><Link className={LINK} href={`/payments/${a.payment_id}`}><Num>{a.receipt_no ?? t.payments.openingCredit}</Num></Link></Td>
+                      <Td className="text-text-2">{f.date(a.effective_date)}</Td>
                       <Td className="text-end"><Num>{f.money(a.amount)}</Num></Td>
-                      <Td>{a.pstatus === "voided" ? <Badge tone="danger">{t.common.voided}</Badge> : null}</Td>
+                      <Td className="text-end">{a.pstatus === "voided" ? <Badge tone="danger">{t.common.voided}</Badge> : null}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -72,37 +108,15 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
               <Empty>{t.common.noData}</Empty>
             )}
           </Card>
-          <Card title={t.dues.adjustments}>
-            {adjustments.length ? (
-              <ul className="divide-y divide-border text-sm">
-                {adjustments.map((a) => (
-                  <li key={a.id} className="py-2">
-                    <div className={`flex justify-between gap-2 ${a.status === "voided" ? "text-muted line-through" : ""}`}>
-                      <span>{t.dues.adjKinds[a.kind as keyof typeof t.dues.adjKinds]} · {f.date(a.adj_date)} · {a.reason}</span>
-                      <Num>{f.money(a.amount)}</Num>
-                    </div>
-                    {canEdit && a.status === "active" ? (
-                      <Disclosure label={t.common.void} tone="danger">
-                        <ActionForm action={voidAdjustmentAction}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <input type="hidden" name="adjustment_id" value={a.id} />
-                          <Field label={t.common.voidReason}><Input name="reason" required /></Field>
-                          <SubmitButton variant="danger">{t.common.voidConfirm}</SubmitButton>
-                        </ActionForm>
-                      </Disclosure>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Empty>{t.common.noData}</Empty>
-            )}
-            {canEdit && c.outstanding > 0 ? (
-              <div className="mt-3">
-                <Disclosure label={t.dues.adjust}>
+          <Card
+            title={t.dues.adjustments}
+            flush
+            actions={
+              canEdit && c.outstanding > 0 ? (
+                <Dialog label={t.dues.adjust} icon={<PlusIcon />} variant="ghost" size="sm" title={t.dues.adjust} closeLabel={t.common.close}>
                   <ActionForm action={adjustAction}>
                     <input type="hidden" name="id" value={c.id} />
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
                       <Field label={t.dues.kind}>
                         <Select name="kind">
                           <option value="waiver">{t.dues.adjKinds.waiver}</option>
@@ -114,38 +128,39 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
                       <Field label={t.common.date}><Input name="date" type="date" defaultValue={d0} required /></Field>
                     </div>
                     <Field label={t.common.reason}><Input name="reason" required /></Field>
-                    <SubmitButton>{t.common.save}</SubmitButton>
+                    <div className="flex justify-end"><SubmitButton>{t.common.save}</SubmitButton></div>
                   </ActionForm>
-                </Disclosure>
-              </div>
-            ) : null}
+                </Dialog>
+              ) : null
+            }
+          >
+            {adjustments.length ? (
+              <ul className="divide-y divide-border">
+                {adjustments.map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 px-4 py-3 text-sm sm:px-5">
+                    <div className={`min-w-0 flex-1 ${a.status === "voided" ? "text-muted line-through" : ""}`}>
+                      <div className="font-medium">{t.dues.adjKinds[a.kind as keyof typeof t.dues.adjKinds]}</div>
+                      <div className="truncate text-xs text-muted">{f.date(a.adj_date)} · {a.reason}</div>
+                    </div>
+                    <Num className={`shrink-0 font-medium ${a.status === "voided" ? "text-muted line-through" : ""}`}>{f.money(a.amount)}</Num>
+                    {canEdit && a.status === "active" ? (
+                      <Dialog label={<span className="sr-only sm:not-sr-only">{t.common.void}</span>} icon={<VoidIcon />} variant="dangerSoft" size="sm" tone="danger" title={t.common.void} description={t.common.voidHelp} closeLabel={t.common.close}>
+                        <ActionForm action={voidAdjustmentAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="adjustment_id" value={a.id} />
+                          <Field label={t.common.voidReason}><Input name="reason" required /></Field>
+                          <div className="flex justify-end"><SubmitButton variant="danger">{t.common.voidConfirm}</SubmitButton></div>
+                        </ActionForm>
+                      </Dialog>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>{t.common.noData}</Empty>
+            )}
           </Card>
         </div>
-        {canEdit ? (
-          <Disclosure label={t.dues.editCharge}>
-            <ActionForm action={editChargeAction}>
-              <input type="hidden" name="id" value={c.id} />
-              <p className="text-sm text-muted">{t.dues.editChargeHelp}</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={`${t.common.amount} (₪)`}><Input name="amount" inputMode="decimal" required dir="ltr" defaultValue={f.plain(c.amount)} /></Field>
-                <Field label={t.dues.dueDate}><Input name="due_date" type="date" required defaultValue={c.due_date} /></Field>
-              </div>
-              <Field label={t.common.description}><Input name="description" defaultValue={c.description} /></Field>
-              <Field label={t.dues.reasonIfAmount}><Input name="reason" /></Field>
-              <SubmitButton>{t.common.save}</SubmitButton>
-            </ActionForm>
-          </Disclosure>
-        ) : null}
-        {canEdit ? (
-          <Disclosure label={t.dues.deleteCharge} tone="danger">
-            <ActionForm action={voidChargeAction}>
-              <input type="hidden" name="id" value={c.id} />
-              <p className="text-sm text-muted">{t.dues.voidChargeHelp}</p>
-              <Field label={t.common.voidReason}><Input name="reason" required /></Field>
-              <SubmitButton variant="danger">{t.common.voidConfirm}</SubmitButton>
-            </ActionForm>
-          </Disclosure>
-        ) : null}
       </div>
     </>
   );

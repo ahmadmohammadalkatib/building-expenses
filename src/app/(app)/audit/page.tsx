@@ -3,7 +3,8 @@ import { requireUser, can } from "@/lib/auth";
 import { db } from "@/lib/db/client";
 import { getDict } from "@/lib/i18n";
 import { formatters } from "@/lib/format";
-import { Button, Card, Field, Input, LinkButton, PageHeader, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, Empty, Field, FilterBar, LinkButton, PageHeader, SearchInput, Table, Td, Th } from "@/components/ui";
+import { ArrowRightIcon, ChevronDownIcon, HistoryIcon } from "@/components/icons";
 
 const PAGE = 100;
 
@@ -25,33 +26,52 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader title={t.audit.title} />
-      <Card>
-        <form className="mb-4 flex items-end gap-2">
-          <Field label={t.common.search}><Input name="q" defaultValue={q} /></Field>
-          <Button type="submit" variant="secondary">{t.common.apply}</Button>
-        </form>
-        <Table>
-          <thead><tr><Th>{t.common.date}</Th><Th>{t.audit.user}</Th><Th>{t.audit.action}</Th><Th>{t.audit.entity}</Th><Th>{t.audit.details}</Th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <Td className="whitespace-nowrap text-muted">{f.dateTime(r.at)}</Td>
-                <Td><span dir="ltr">{r.user_email}</span></Td>
-                <Td>{r.action}</Td>
-                <Td>{r.entity}</Td>
-                <Td>
-                  <details>
-                    <summary className="cursor-pointer text-xs text-primary">{r.entity_id?.slice(0, 8) ?? "…"}</summary>
-                    <pre dir="ltr" className="mt-1 max-w-xl overflow-x-auto whitespace-pre-wrap rounded bg-surface-2 p-2 text-start text-xs">{JSON.stringify(r.details, null, 2)}</pre>
-                  </details>
-                </Td>
+      <Card flush>
+        <FilterBar apply={t.common.apply} reset={q || before ? { href: "/audit", label: t.common.reset } : undefined}>
+          <Field label={t.common.search} className="w-full sm:w-72"><SearchInput name="q" defaultValue={q} /></Field>
+        </FilterBar>
+        {rows.length ? (
+          <Table>
+            <thead>
+              <tr>
+                <Th>{t.common.date}</Th>
+                <Th>{t.audit.user}</Th>
+                <Th>{t.audit.action}</Th>
+                <Th>{t.audit.entity}</Th>
+                <Th>{t.audit.details}</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="align-top">
+                  <Td className="whitespace-nowrap text-text-2">{f.dateTime(r.at)}</Td>
+                  <Td><span dir="ltr" className="text-text-2">{r.user_email ?? "system"}</span></Td>
+                  <Td><Badge>{r.action}</Badge></Td>
+                  <Td className="font-medium">{r.entity}</Td>
+                  <Td>
+                    <details className="group">
+                      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium text-primary">
+                        <span className="num">{r.entity_id?.slice(0, 8) ?? "…"}</span>
+                        <ChevronDownIcon className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+                      </summary>
+                      <pre dir="ltr" className="mt-2 max-w-xl overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-surface-2 p-3 text-start font-mono text-xs leading-relaxed text-text-2">
+                        {JSON.stringify(r.details, null, 2)}
+                      </pre>
+                    </details>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <Empty icon={<HistoryIcon />}>{t.common.noData}</Empty>
+        )}
         {rows.length === PAGE ? (
-          <div className="mt-4">
-            <LinkButton variant="secondary" href={`/audit?q=${encodeURIComponent(q)}&before=${rows[rows.length - 1].id}`}>›</LinkButton>
+          <div className="flex justify-center border-t border-border p-4">
+            <LinkButton variant="secondary" href={`/audit?q=${encodeURIComponent(q)}&before=${rows[rows.length - 1].id}`}>
+              {t.common.olderEntries}
+              <ArrowRightIcon className="rtl:rotate-180" />
+            </LinkButton>
           </div>
         ) : null}
       </Card>

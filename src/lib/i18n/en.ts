@@ -1,7 +1,7 @@
 import type { Dict } from "./ar";
 
 const en: Dict = {
-  app: { name: "Building Expense Management", short: "Building Expenses" },
+  app: { name: "Building Expense Management", short: "Building Expenses", tagline: "Sign in to manage your building's accounts" },
   nav: {
     dashboard: "Dashboard",
     apartments: "Apartments",
@@ -14,6 +14,7 @@ const en: Dict = {
     account: "My account",
     logout: "Sign out",
     menu: "Menu",
+    groups: { ledger: "Ledger", admin: "Administration" },
   },
   common: {
     save: "Save",
@@ -65,6 +66,18 @@ const en: Dict = {
     floor: "Floor",
     whatsapp: "WhatsApp",
     currency: "₪",
+    close: "Close",
+    reset: "Reset",
+    olderEntries: "Older entries",
+    results: "{n} results",
+  },
+  pages: {
+    errorTitle: "Something went wrong",
+    errorBody: "This page couldn't be loaded. Please try again in a moment.",
+    retry: "Try again",
+    notFoundTitle: "Page not found",
+    notFoundBody: "The page may have moved, or the link is incorrect.",
+    backHome: "Back to dashboard",
   },
   methods: { cash: "Cash", bank_transfer: "Bank transfer", cheque: "Cheque", card: "Card", other: "Other" },
   roles: { admin: "Admin", treasurer: "Treasurer", viewer: "Read-only" },

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { getDict } from "@/lib/i18n";
+import { ToastProvider } from "@/components/toast";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -7,10 +8,17 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: { default: t.app.name, template: `%s · ${t.app.short}` }, robots: { index: false } };
 }
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#1f5f8b" };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0c0f" },
+  ],
+};
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { locale } = await getDict();
+  const { t, locale } = await getDict();
   return (
     <html lang={locale} dir={locale === "ar" ? "rtl" : "ltr"}>
       <head>
@@ -22,7 +30,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
         />
       </head>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <ToastProvider savedLabel={t.common.saved} closeLabel={t.common.close}>
+          {children}
+        </ToastProvider>
+      </body>
     </html>
   );
 }

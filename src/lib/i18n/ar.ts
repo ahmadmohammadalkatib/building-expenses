@@ -1,6 +1,6 @@
 // Arabic (default). Keys are shared with en.ts — TypeScript enforces parity.
 const ar = {
-  app: { name: "إدارة مصاريف العمارة", short: "مصاريف العمارة" },
+  app: { name: "إدارة مصاريف العمارة", short: "مصاريف العمارة", tagline: "سجّل الدخول لإدارة حسابات العمارة" },
   nav: {
     dashboard: "لوحة التحكم",
     apartments: "الشقق",
@@ -13,6 +13,7 @@ const ar = {
     account: "حسابي",
     logout: "تسجيل الخروج",
     menu: "القائمة",
+    groups: { ledger: "الحسابات", admin: "الإدارة" },
   },
   common: {
     save: "حفظ",
@@ -64,6 +65,18 @@ const ar = {
     floor: "الطابق",
     whatsapp: "واتساب",
     currency: "₪",
+    close: "إغلاق",
+    reset: "إعادة تعيين",
+    olderEntries: "السجلات الأقدم",
+    results: "النتائج: {n}",
+  },
+  pages: {
+    errorTitle: "حدث خطأ غير متوقع",
+    errorBody: "تعذّر تحميل هذه الصفحة. حاول مرة أخرى بعد قليل.",
+    retry: "إعادة المحاولة",
+    notFoundTitle: "الصفحة غير موجودة",
+    notFoundBody: "ربما تم نقل الصفحة أو أن الرابط غير صحيح.",
+    backHome: "العودة إلى لوحة التحكم",
   },
   methods: { cash: "نقداً", bank_transfer: "تحويل بنكي", cheque: "شيك", card: "بطاقة", other: "أخرى" },
   roles: { admin: "مدير", treasurer: "أمين صندوق", viewer: "مشاهدة فقط" },
