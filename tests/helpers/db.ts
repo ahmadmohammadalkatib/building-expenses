@@ -9,7 +9,7 @@ import { createSql, type Sql } from "@/lib/db/client";
 import type { Actor } from "@/lib/services/common";
 
 const ADMIN_URL = process.env.TEST_PG_ADMIN_URL ?? "postgres://postgres@127.0.0.1:54329/postgres";
-const MIGRATIONS = ["0001_schema.sql", "0002_security.sql"];
+const MIGRATIONS = ["0001_schema.sql", "0002_security.sql", "0004_editable_dues_and_fees.sql"];
 
 export const hasTestDb = !!ADMIN_URL;
 

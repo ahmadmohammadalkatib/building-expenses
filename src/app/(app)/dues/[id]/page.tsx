@@ -9,7 +9,7 @@ import { chargeState } from "@/lib/core/accounting";
 import { ActionForm, Disclosure, SubmitButton } from "@/components/forms";
 import { Alert, Badge, Card, Empty, Field, Input, Num, PageHeader, Select, Stat, Table, Td, Th } from "@/components/ui";
 import { ChargeStatus } from "@/components/status";
-import { adjustAction, voidAdjustmentAction, voidChargeAction } from "../actions";
+import { adjustAction, editChargeAction, voidAdjustmentAction, voidChargeAction } from "../actions";
 
 export default async function ChargePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -122,7 +122,22 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
           </Card>
         </div>
         {canEdit ? (
-          <Disclosure label={t.common.void} tone="danger">
+          <Disclosure label={t.dues.editCharge}>
+            <ActionForm action={editChargeAction}>
+              <input type="hidden" name="id" value={c.id} />
+              <p className="text-sm text-muted">{t.dues.editChargeHelp}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={`${t.common.amount} (₪)`}><Input name="amount" inputMode="decimal" required dir="ltr" defaultValue={f.plain(c.amount)} /></Field>
+                <Field label={t.dues.dueDate}><Input name="due_date" type="date" required defaultValue={c.due_date} /></Field>
+              </div>
+              <Field label={t.common.description}><Input name="description" defaultValue={c.description} /></Field>
+              <Field label={t.dues.reasonIfAmount}><Input name="reason" /></Field>
+              <SubmitButton>{t.common.save}</SubmitButton>
+            </ActionForm>
+          </Disclosure>
+        ) : null}
+        {canEdit ? (
+          <Disclosure label={t.dues.deleteCharge} tone="danger">
             <ActionForm action={voidChargeAction}>
               <input type="hidden" name="id" value={c.id} />
               <p className="text-sm text-muted">{t.dues.voidChargeHelp}</p>

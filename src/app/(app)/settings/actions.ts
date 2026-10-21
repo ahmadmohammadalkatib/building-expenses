@@ -5,7 +5,7 @@ import { db } from "@/lib/db/client";
 import { actor, money, newKey, run, str } from "@/lib/actions";
 import type { FormState } from "@/components/forms";
 import { getDict } from "@/lib/i18n";
-import { addFee, saveCategory, setOpeningArrears, updateSettings } from "@/lib/services/setup";
+import { addFee, deleteFee, saveCategory, setOpeningArrears, updateFee, updateSettings } from "@/lib/services/setup";
 import { createUser, resetUserPassword, updateUser } from "@/lib/services/users";
 import { recordPayment } from "@/lib/services/ledger";
 import { AppError, getSettings, today, type Role } from "@/lib/services/common";
@@ -46,9 +46,11 @@ export async function addFeeAction(_: FormState, fd: FormData): Promise<FormStat
         amount: money(fd, "amount"),
         effectiveFrom: `${str(fd, "month")}-01`,
         note: str(fd, "note"),
+        applyToIssued: fd.get("apply") === "on",
       },
       await today(sql),
     );
+    revalidatePath("/", "layout");
     revalidatePath("/settings/fees");
     return { ok: true, message: t.common.saved };
   });
@@ -131,6 +133,28 @@ export async function openingBalanceAction(_: FormState, fd: FormData): Promise<
       await setOpeningArrears(sql, a, apartmentId, amount);
     }
     revalidatePath("/settings/opening");
+    return { ok: true, message: t.common.saved };
+  });
+}
+
+export async function updateFeeAction(_: FormState, fd: FormData): Promise<FormState> {
+  return run(async () => {
+    const a = await actor();
+    const { t } = await getDict();
+    const sql = db();
+    await updateFee(sql, a, str(fd, "id"), { amount: money(fd, "amount"), note: str(fd, "note"), applyToIssued: fd.get("apply") === "on" }, await today(sql));
+    revalidatePath("/", "layout");
+    return { ok: true, message: t.common.saved };
+  });
+}
+
+export async function deleteFeeAction(_: FormState, fd: FormData): Promise<FormState> {
+  return run(async () => {
+    const a = await actor();
+    const { t } = await getDict();
+    const sql = db();
+    await deleteFee(sql, a, str(fd, "id"), fd.get("apply") === "on", await today(sql));
+    revalidatePath("/", "layout");
     return { ok: true, message: t.common.saved };
   });
 }

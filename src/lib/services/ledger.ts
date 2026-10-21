@@ -7,6 +7,7 @@ import {
   allocate,
   applyCredit,
   checkTransactionDate,
+  feeForMonth,
   formatReceiptNo,
   planMonthlyCharges,
   type FeeRate,
@@ -100,7 +101,10 @@ async function generateMonthInTx(tx: Tx, actor: Actor, month: string, onlyApartm
     where ${onlyApartment ?? null}::uuid is null or id = ${onlyApartment ?? null}::uuid`;
   const existing = new Set(
     (await tx<{ apartment_id: string }[]>`
-      select apartment_id from charges where kind = 'monthly' and billing_month = ${m}`).map((r) => r.apartment_id),
+      select apartment_id from charges where kind = 'monthly' and billing_month = ${m}
+        -- a month the user deleted stays deleted; months removed only because a fee was
+        -- deleted/zeroed (reason "fee_…") may be billed again if a fee comes back
+        and (status = 'active' or coalesce(void_reason, '') not like 'fee\\_%')`).map((r) => r.apartment_id),
   );
   const plan = planMonthlyCharges(
     apts.map((a) => ({ id: a.id, billingStartMonth: a.billing_start_month, archivedAt: a.archived_at })),
@@ -115,7 +119,7 @@ async function generateMonthInTx(tx: Tx, actor: Actor, month: string, onlyApartm
     const ins = await tx`
       insert into charges (apartment_id, kind, billing_month, due_date, amount, description, created_by)
       values (${c.apartmentId}, 'monthly', ${m}, ${due}, ${c.amount}, '', ${actor.id})
-      on conflict (apartment_id, billing_month) where kind = 'monthly' do nothing
+      on conflict (apartment_id, billing_month) where kind = 'monthly' and status = 'active' do nothing
       returning id`;
     if (ins.length) {
       created++;
@@ -410,4 +414,112 @@ export async function editPaymentDetails(
              notes = ${input.notes.trim()}, method = ${input.method} where id = ${paymentId}`;
     await audit(tx, actor, "edit", "payment", paymentId, { before, after: input });
   });
+}
+
+// ------------------------------------------------------------------ editing dues
+
+/**
+ * Change a charge's amount without rewriting history: void it (its payments go back to credit)
+ * and issue a replacement with the new amount, then re-apply credit. Amount 0 = remove.
+ * Caller holds the apartment lock. Returns the replacement id (null when removed).
+ */
+async function reissueChargeInTx(
+  tx: Tx,
+  actor: Actor,
+  chargeId: string,
+  newAmount: number,
+  reason: string,
+  overrides: { dueDate?: string; description?: string } = {},
+): Promise<string | null> {
+  const [c] = await tx<
+    { id: string; apartment_id: string; kind: string; billing_month: string; due_date: string; description: string; status: string }[]
+  >`select id, apartment_id, kind, billing_month, due_date, description, status from charges where id = ${chargeId}`;
+  if (!c) throw new AppError("not_found");
+  if (c.status === "voided") throw new AppError("already_voided");
+  await tx`update charges set status = 'voided', void_reason = ${reason}, voided_at = now(), voided_by = ${actor.id}
+           where id = ${chargeId}`;
+  await tx`update allocations set released_at = now() where charge_id = ${chargeId} and released_at is null`;
+  let newId: string | null = null;
+  if (newAmount > 0) {
+    const [n] = await tx<{ id: string }[]>`
+      insert into charges (apartment_id, kind, billing_month, due_date, amount, description, created_by, replaces_id)
+      values (${c.apartment_id}, ${c.kind}, ${c.billing_month}, ${overrides.dueDate ?? c.due_date}, ${newAmount},
+              ${overrides.description ?? c.description}, ${actor.id}, ${chargeId})
+      returning id`;
+    newId = n.id;
+  }
+  await applyApartmentCredit(tx, c.apartment_id);
+  await audit(tx, actor, newAmount > 0 ? "reissue" : "void", "charge", chargeId, { reason, newAmount, newId });
+  return newId;
+}
+
+/**
+ * Edit a charge. Description and due date change in place; a new amount re-issues the charge
+ * (see reissueChargeInTx). Returns the id of the charge to show afterwards.
+ */
+export async function editCharge(
+  sql: Sql,
+  actor: Actor,
+  chargeId: string,
+  input: { amount: number; dueDate: string; description: string; reason: string },
+): Promise<string> {
+  requireRole(actor, "treasurer");
+  if (!isIsoDate(input.dueDate)) throw new AppError("invalid_date");
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new AppError("invalid_amount");
+  return sql.begin(async (tx) => {
+    const [c] = await tx<{ apartment_id: string; amount: number; due_date: string; description: string; status: string; kind: string }[]>`
+      select apartment_id, amount, due_date, description, status, kind from charges where id = ${chargeId}`;
+    if (!c) throw new AppError("not_found");
+    await lockApartment(tx, c.apartment_id);
+    if (c.status === "voided") throw new AppError("already_voided");
+    if (c.kind !== "opening" && c.kind !== "monthly" && !input.description.trim()) throw new AppError("description_required");
+    if (input.amount !== c.amount) {
+      if (!input.reason.trim()) throw new AppError("reason_required");
+      const id = await reissueChargeInTx(tx, actor, chargeId, input.amount, input.reason.trim(), {
+        dueDate: input.dueDate,
+        description: input.description.trim(),
+      });
+      return id!;
+    }
+    await tx`update charges set due_date = ${input.dueDate}, description = ${input.description.trim()} where id = ${chargeId}`;
+    await audit(tx, actor, "edit", "charge", chargeId, { before: { due_date: c.due_date, description: c.description }, after: input });
+    return chargeId;
+  });
+}
+
+/**
+ * After fee rates change: re-price ACTIVE monthly charges from `fromMonth` on so each matches the
+ * fee in force for its apartment and month. Charges whose fee no longer exists are removed.
+ * Payments on re-priced charges are re-applied automatically (oldest first).
+ */
+export async function repriceIssuedMonthlyInTx(
+  tx: Tx,
+  actor: Actor,
+  fromMonth: string,
+  apartmentId: string | null,
+  reason: string,
+): Promise<number> {
+  await tx`select pg_advisory_xact_lock(hashtext(${GEN_LOCK}))`;
+  const rates = (
+    await tx<{ apartment_id: string | null; amount: number; effective_from: string }[]>`
+      select apartment_id, amount, effective_from from fee_rates`
+  ).map<FeeRate>((r) => ({ apartmentId: r.apartment_id, amount: r.amount, effectiveFrom: r.effective_from }));
+  const charges = await tx<{ id: string; apartment_id: string; billing_month: string; amount: number }[]>`
+    select id, apartment_id, billing_month, amount from charges
+    where kind = 'monthly' and status = 'active' and billing_month >= ${monthStart(fromMonth)}
+      and (${apartmentId}::uuid is null or apartment_id = ${apartmentId}::uuid)
+    order by apartment_id, billing_month`;
+  let changed = 0;
+  let locked = "";
+  for (const c of charges) {
+    const fee = feeForMonth(rates, c.apartment_id, c.billing_month) ?? 0;
+    if (fee === c.amount) continue;
+    if (locked !== c.apartment_id) {
+      await lockApartment(tx, c.apartment_id);
+      locked = c.apartment_id;
+    }
+    await reissueChargeInTx(tx, actor, c.id, fee, reason);
+    changed++;
+  }
+  return changed;
 }

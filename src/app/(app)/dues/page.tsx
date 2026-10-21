@@ -73,7 +73,7 @@ export default async function DuesPage({ searchParams }: { searchParams: Promise
               <thead>
                 <tr>
                   <Th>{t.common.apartment}</Th><Th>{t.dues.billingMonth}</Th><Th>{t.dues.kind}</Th><Th>{t.dues.dueDate}</Th>
-                  <Th className="text-end">{t.common.amount}</Th><Th className="text-end">{t.dues.paid}</Th><Th className="text-end">{t.dues.outstanding}</Th><Th>{t.common.status}</Th>
+                  <Th className="text-end">{t.common.amount}</Th><Th className="text-end">{t.dues.paid}</Th><Th className="text-end">{t.dues.outstanding}</Th><Th>{t.common.status}</Th><Th className="no-print" />
                 </tr>
               </thead>
               <tbody>
@@ -87,6 +87,11 @@ export default async function DuesPage({ searchParams }: { searchParams: Promise
                     <Td className="text-end text-success"><Num>{f.money(r.paid + r.adjusted)}</Num></Td>
                     <Td className="text-end font-medium"><Num>{f.money(r.outstanding)}</Num></Td>
                     <Td><ChargeStatus t={t} state={r.state} voided={r.status === "voided"} /></Td>
+                    <Td className="no-print">
+                      {can(user, "treasurer") && r.status === "active" ? (
+                        <Link className="text-sm text-primary" href={`/dues/${r.id}`}>{t.dues.editCharge}</Link>
+                      ) : null}
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -97,6 +102,7 @@ export default async function DuesPage({ searchParams }: { searchParams: Promise
                   <Td />
                   <Td className="text-end"><Num>{f.money(totals.outstanding)}</Num></Td>
                   <Td />
+                  <Td className="no-print" />
                 </tr>
               </tfoot>
             </Table>

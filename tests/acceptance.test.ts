@@ -6,6 +6,7 @@ import {
   addAdjustment,
   apartmentCredit,
   createCharge,
+  editCharge,
   generateMonthlyCharges,
   previewPayment,
   recordPayment,
@@ -13,7 +14,7 @@ import {
   voidPayment,
   type NewPayment,
 } from "@/lib/services/ledger";
-import { addFee, createApartment, setOpeningArrears, updateSettings } from "@/lib/services/setup";
+import { addFee, createApartment, deleteFee, setOpeningArrears, updateFee, updateSettings } from "@/lib/services/setup";
 import { recordExpense, voidExpense } from "@/lib/services/expenses";
 import {
   apartmentStatement,
@@ -100,12 +101,9 @@ describe("acceptance", () => {
     expect(feb).toHaveLength(1);
   });
 
-  it("AC-02 effective-dated fee + per-apartment override; no change for generated months", async () => {
+  it("AC-02 effective-dated fee + per-apartment override", async () => {
     const a = await apt();
     await addFee(sql, ADMIN, { apartmentId: a, amount: 7500, effectiveFrom: "2026-03-01", note: "discount" });
-    await expect(
-      addFee(sql, ADMIN, { apartmentId: null, amount: 12000, effectiveFrom: "2026-02-01", note: "" }),
-    ).rejects.toMatchObject({ code: "fee_month_generated" });
     await generateMonthlyCharges(sql, ADMIN, "2026-03-01", "manual");
     const [c] = await sql`select amount from charges where apartment_id = ${a} and billing_month = '2026-03-01'`;
     expect(c.amount).toBe(7500);
@@ -327,5 +325,40 @@ describe("acceptance", () => {
     await generateMonthlyCharges(sql, ADMIN, "2026-10-01", "cron");
     const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from charges where apartment_id = ${a} and kind = 'monthly'`;
     expect(n).toBe(1);
+  });
+
+  it("AC-22 editing a charge amount re-issues it and re-applies its payments", async () => {
+    const a = await apt("2026-10-01");
+    const c = await createCharge(sql, ADMIN, { apartmentId: a, kind: "special", billingMonth: "2026-10-01", dueDate: "2026-10-30", amount: 20000, description: "paint" });
+    await pay(a, 15000, "2026-10-05");
+    const newId = await editCharge(sql, ADMIN, c, { amount: 10000, dueDate: "2026-10-30", description: "paint (fixed)", reason: "typo" });
+    expect(newId).not.toBe(c);
+    expect(await aptOutstanding(a)).toBe(0);
+    expect(await apartmentCredit(sql, a)).toBe(5000); // overpaid after the fix → credit
+    const [old] = await sql`select status from charges where id = ${c}`;
+    expect(old.status).toBe("voided");
+    // description-only edit stays in place
+    const same = await editCharge(sql, ADMIN, newId, { amount: 10000, dueDate: "2026-10-31", description: "paint v2", reason: "" });
+    expect(same).toBe(newId);
+    await expect(editCharge(sql, ADMIN, newId, { amount: 9000, dueDate: "2026-10-31", description: "x", reason: "" })).rejects.toMatchObject({ code: "reason_required" });
+  });
+
+  it("AC-23 editing a fee can re-price charges already issued", async () => {
+    const a = await createApartment(sql, ADMIN, { number: "FEE-1", floor: 1, billingStartMonth: "2026-09-01", notes: "" }, undefined, TODAY);
+    const f = await addFee(sql, ADMIN, { apartmentId: a, amount: 20000, effectiveFrom: "2026-09-01", note: "big flat", applyToIssued: true }, TODAY);
+    const amounts = async () =>
+      (await sql<{ amount: number }[]>`select amount from charges where apartment_id = ${a} and kind = 'monthly' and status = 'active' order by billing_month`).map((r) => r.amount);
+    expect(await amounts()).toEqual([20000, 20000]);
+    await pay(a, 20000, "2026-10-01"); // pays September
+    await updateFee(sql, ADMIN, f, { amount: 15000, note: "", applyToIssued: true }, TODAY);
+    expect(await amounts()).toEqual([15000, 15000]);
+    expect(await aptOutstanding(a)).toBe(10000); // 30000 owed − 20000 paid
+    // without applyToIssued only future months change
+    await updateFee(sql, ADMIN, f, { amount: 18000, note: "", applyToIssued: false }, TODAY);
+    expect(await amounts()).toEqual([15000, 15000]);
+    // deleting the override falls back to the building fee (10000) for issued months
+    await deleteFee(sql, ADMIN, f, true, TODAY);
+    expect(await amounts()).toEqual([10000, 10000]);
+    expect(await aptOutstanding(a)).toBe(0);
   });
 });

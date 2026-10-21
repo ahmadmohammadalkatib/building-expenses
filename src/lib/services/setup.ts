@@ -1,11 +1,10 @@
 // Settings, fees, apartments, owners, categories.
 
-import type { Db, Sql } from "@/lib/db/client";
-import { canFeeStartIn } from "@/lib/core/accounting";
+import type { Db, Sql, Tx } from "@/lib/db/client";
 import { isIsoDate, monthStart } from "@/lib/core/dates";
 import { normalizePhone } from "@/lib/core/phone";
 import { AppError, audit, getSettings, isUniqueViolation, requireRole, type Actor, type Settings } from "./common";
-import { applyApartmentCredit, catchUpChargesInTx, generatedMonths } from "./ledger";
+import { applyApartmentCredit, catchUpChargesInTx, repriceIssuedMonthlyInTx } from "./ledger";
 
 // ------------------------------------------------------------------ settings
 
@@ -58,31 +57,79 @@ export async function listFees(sql: Db) {
     order by f.apartment_id nulls first, a.number, f.effective_from desc`;
 }
 
+/**
+ * Add an effective-dated fee. When `applyToIssued` is set, monthly charges already issued from that
+ * month on are re-priced to the new fee (payments on them are re-applied automatically).
+ */
 export async function addFee(
   sql: Sql,
   actor: Actor,
-  input: { apartmentId: string | null; amount: number; effectiveFrom: string; note: string },
+  input: { apartmentId: string | null; amount: number; effectiveFrom: string; note: string; applyToIssued?: boolean },
   today?: string,
 ) {
   requireRole(actor, "admin");
   if (!isIsoDate(input.effectiveFrom)) throw new AppError("invalid_date");
   if (!Number.isSafeInteger(input.amount) || input.amount < 0) throw new AppError("invalid_amount");
   const m = monthStart(input.effectiveFrom);
-  const gen = await generatedMonths(sql);
-  if (!canFeeStartIn(m, gen)) throw new AppError("fee_month_generated");
   try {
     return await sql.begin(async (tx) => {
       const [r] = await tx<{ id: string }[]>`
         insert into fee_rates (apartment_id, amount, effective_from, note, created_by)
         values (${input.apartmentId}, ${input.amount}, ${m}, ${input.note.trim()}, ${actor.id}) returning id`;
       await audit(tx, actor, "create", "fee_rate", r.id, { ...input, effectiveFrom: m });
-      // A fee effective now (or earlier) bills apartments for the current month immediately.
-      if (today && m <= monthStart(today)) await catchUpChargesInTx(tx, actor, today, input.apartmentId ?? undefined);
+      await afterFeeChange(tx, actor, m, input.apartmentId, input.applyToIssued ?? true, today, "fee_added");
       return r.id;
     });
   } catch (e) {
     if (isUniqueViolation(e)) throw new AppError("fee_exists");
     throw e;
+  }
+}
+
+export async function updateFee(
+  sql: Sql,
+  actor: Actor,
+  id: string,
+  input: { amount: number; note: string; applyToIssued: boolean },
+  today?: string,
+) {
+  requireRole(actor, "admin");
+  if (!Number.isSafeInteger(input.amount) || input.amount < 0) throw new AppError("invalid_amount");
+  await sql.begin(async (tx) => {
+    const [before] = await tx<{ apartment_id: string | null; amount: number; effective_from: string; note: string }[]>`
+      select apartment_id, amount, effective_from, note from fee_rates where id = ${id} for update`;
+    if (!before) throw new AppError("not_found");
+    await tx`update fee_rates set amount = ${input.amount}, note = ${input.note.trim()} where id = ${id}`;
+    await audit(tx, actor, "update", "fee_rate", id, { before, after: input });
+    await afterFeeChange(tx, actor, before.effective_from, before.apartment_id, input.applyToIssued, today, "fee_changed");
+  });
+}
+
+export async function deleteFee(sql: Sql, actor: Actor, id: string, applyToIssued: boolean, today?: string) {
+  requireRole(actor, "admin");
+  await sql.begin(async (tx) => {
+    const [before] = await tx<{ apartment_id: string | null; amount: number; effective_from: string; note: string }[]>`
+      select apartment_id, amount, effective_from, note from fee_rates where id = ${id} for update`;
+    if (!before) throw new AppError("not_found");
+    await tx`delete from fee_rates where id = ${id}`;
+    await audit(tx, actor, "delete", "fee_rate", id, { before });
+    await afterFeeChange(tx, actor, before.effective_from, before.apartment_id, applyToIssued, today, "fee_deleted");
+  });
+}
+
+async function afterFeeChange(
+  tx: Tx,
+  actor: Actor,
+  fromMonth: string,
+  apartmentId: string | null,
+  applyToIssued: boolean,
+  today: string | undefined,
+  reason: string,
+) {
+  if (applyToIssued) await repriceIssuedMonthlyInTx(tx, actor, fromMonth, apartmentId, reason);
+  // A fee effective now (or earlier) bills un-charged months right away.
+  if (today && monthStart(fromMonth) <= monthStart(today)) {
+    await catchUpChargesInTx(tx, actor, today, apartmentId ?? undefined);
   }
 }
 

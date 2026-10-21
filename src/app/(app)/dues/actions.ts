@@ -7,7 +7,7 @@ import { actor, money, run, str } from "@/lib/actions";
 import type { FormState } from "@/components/forms";
 import { fmt, getDict } from "@/lib/i18n";
 import { formatMonth } from "@/lib/core/dates";
-import { addAdjustment, createCharge, generateMonthlyCharges, voidAdjustment, voidCharge } from "@/lib/services/ledger";
+import { addAdjustment, createCharge, editCharge, generateMonthlyCharges, voidAdjustment, voidCharge } from "@/lib/services/ledger";
 import { AppError, today } from "@/lib/services/common";
 
 export async function generateAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -78,4 +78,20 @@ export async function voidAdjustmentAction(_: FormState, fd: FormData): Promise<
     revalidatePath(`/dues/${str(fd, "id")}`);
     return { ok: true, message: t.common.saved };
   });
+}
+
+export async function editChargeAction(_: FormState, fd: FormData): Promise<FormState> {
+  let target = "";
+  const res = await run(async () => {
+    const a = await actor();
+    target = await editCharge(db(), a, str(fd, "id"), {
+      amount: money(fd, "amount"),
+      dueDate: str(fd, "due_date"),
+      description: str(fd, "description"),
+      reason: str(fd, "reason"),
+    });
+  });
+  if (res?.error) return res;
+  revalidatePath("/dues");
+  redirect(`/dues/${target}`);
 }
