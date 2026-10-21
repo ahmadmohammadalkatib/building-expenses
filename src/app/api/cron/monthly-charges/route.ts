@@ -2,8 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db/client";
 import { SYSTEM, today } from "@/lib/services/common";
-import { generateMonthlyCharges } from "@/lib/services/ledger";
-import { monthStart } from "@/lib/core/dates";
+import { catchUpCharges } from "@/lib/services/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +15,12 @@ function authorized(req: NextRequest): boolean {
 }
 
 /**
- * Runs daily (Vercel Cron). Generates the current building-local month's charges if
- * they don't exist yet — idempotent, so daily runs are harmless and self-healing.
+ * Runs daily (Vercel Cron). Creates any missing monthly charges up to the current building-local
+ * month — idempotent, so daily runs are harmless and self-healing.
  */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const sql = db();
-  const month = monthStart(await today(sql));
-  const r = await generateMonthlyCharges(sql, SYSTEM, month, "cron");
+  const r = await catchUpCharges(sql, SYSTEM, await today(sql), "cron");
   return NextResponse.json(r);
 }

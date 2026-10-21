@@ -314,4 +314,18 @@ describe("acceptance", () => {
       expect(s.cash.closing).toBe(s.cash.opening + s.cash.collections - s.cash.expenses);
     }
   });
+
+  it("AC-21 a new apartment is charged immediately from its billing start through the current month", async () => {
+    const a = await createApartment(sql, ADMIN, { number: "NEW-1", floor: 2, billingStartMonth: "2026-10-01", notes: "" }, undefined, TODAY);
+    expect(await aptOutstanding(a)).toBe(10000);
+    const b = await createApartment(sql, ADMIN, { number: "NEW-2", floor: 2, billingStartMonth: "2026-08-01", notes: "" }, undefined, TODAY);
+    const months = (await sql<{ m: string }[]>`select billing_month as m from charges where apartment_id = ${b} and kind = 'monthly' order by 1`).map((r) => r.m);
+    expect(months).toEqual(["2026-08-01", "2026-09-01", "2026-10-01"]);
+    // paying in the same month settles it; repeat catch-up creates nothing new
+    await pay(a, 10000, "2026-10-21");
+    expect(await aptOutstanding(a)).toBe(0);
+    await generateMonthlyCharges(sql, ADMIN, "2026-10-01", "cron");
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from charges where apartment_id = ${a} and kind = 'monthly'`;
+    expect(n).toBe(1);
+  });
 });

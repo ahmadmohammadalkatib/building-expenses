@@ -37,12 +37,18 @@ export async function addFeeAction(_: FormState, fd: FormData): Promise<FormStat
   return run(async () => {
     const a = await actor();
     const { t } = await getDict();
-    await addFee(db(), a, {
-      apartmentId: str(fd, "apartment_id") || null,
-      amount: money(fd, "amount"),
-      effectiveFrom: `${str(fd, "month")}-01`,
-      note: str(fd, "note"),
-    });
+    const sql = db();
+    await addFee(
+      sql,
+      a,
+      {
+        apartmentId: str(fd, "apartment_id") || null,
+        amount: money(fd, "amount"),
+        effectiveFrom: `${str(fd, "month")}-01`,
+        note: str(fd, "note"),
+      },
+      await today(sql),
+    );
     revalidatePath("/settings/fees");
     return { ok: true, message: t.common.saved };
   });

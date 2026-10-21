@@ -27,7 +27,8 @@ export async function createApartmentAction(_: FormState, fd: FormData): Promise
   const res = await run(async () => {
     const a = await actor();
     const sql = db();
-    id = await createApartment(sql, a, aptInput(fd), { ...ownerInput(fd), startDate: await today(sql) });
+    const d = await today(sql);
+    id = await createApartment(sql, a, aptInput(fd), { ...ownerInput(fd), startDate: d }, d);
   });
   if (res?.error) return res;
   revalidatePath("/apartments");
@@ -39,7 +40,8 @@ export async function updateApartmentAction(_: FormState, fd: FormData): Promise
     const a = await actor();
     const { t } = await getDict();
     const id = str(fd, "id");
-    await updateApartment(db(), a, id, aptInput(fd));
+    const sql = db();
+    await updateApartment(sql, a, id, aptInput(fd), await today(sql));
     revalidatePath(`/apartments/${id}`);
     return { ok: true, message: t.common.saved };
   });

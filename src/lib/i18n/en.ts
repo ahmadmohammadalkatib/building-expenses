@@ -110,7 +110,7 @@ const en: Dict = {
     number: "Apartment no.",
     floor: "Floor",
     billingStart: "Billing starts",
-    billingStartHelp: "First month charged the full monthly fee (no prorating).",
+    billingStartHelp: "First month charged the full monthly fee (no prorating). Charges up to the current month are created on save.",
     outstanding: "Outstanding",
     credit: "Credit",
     showArchived: "Show archived",

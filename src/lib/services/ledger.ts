@@ -12,7 +12,7 @@ import {
   type FeeRate,
   type OpenCharge,
 } from "@/lib/core/accounting";
-import { dayOfMonth, isIsoDate, monthStart } from "@/lib/core/dates";
+import { addMonths, dayOfMonth, isIsoDate, monthStart } from "@/lib/core/dates";
 import { AppError, audit, getSettings, isUniqueViolation, requireRole, type Actor } from "./common";
 
 // ------------------------------------------------------------------ helpers
@@ -85,7 +85,48 @@ export interface GenerateResult {
   creditApplied: number;
 }
 
-/** Idempotent: safe to run any number of times (cron daily + manual button). */
+const GEN_LOCK = "generate_monthly_charges";
+
+/** Create missing monthly charges for one month (optionally only some apartments). Caller holds GEN_LOCK. */
+async function generateMonthInTx(tx: Tx, actor: Actor, month: string, onlyApartment?: string) {
+  const m = monthStart(month);
+  const settings = await getSettings(tx);
+  const rates = (
+    await tx<{ apartment_id: string | null; amount: number; effective_from: string }[]>`
+      select apartment_id, amount, effective_from from fee_rates`
+  ).map<FeeRate>((r) => ({ apartmentId: r.apartment_id, amount: r.amount, effectiveFrom: r.effective_from }));
+  const apts = await tx<{ id: string; billing_start_month: string; archived_at: string | null }[]>`
+    select id, billing_start_month, archived_at from apartments
+    where ${onlyApartment ?? null}::uuid is null or id = ${onlyApartment ?? null}::uuid`;
+  const existing = new Set(
+    (await tx<{ apartment_id: string }[]>`
+      select apartment_id from charges where kind = 'monthly' and billing_month = ${m}`).map((r) => r.apartment_id),
+  );
+  const plan = planMonthlyCharges(
+    apts.map((a) => ({ id: a.id, billingStartMonth: a.billing_start_month, archivedAt: a.archived_at })),
+    rates,
+    m,
+    existing,
+  );
+  const due = dayOfMonth(m, settings.due_day);
+  let created = 0;
+  let creditApplied = 0;
+  for (const c of plan) {
+    const ins = await tx`
+      insert into charges (apartment_id, kind, billing_month, due_date, amount, description, created_by)
+      values (${c.apartmentId}, 'monthly', ${m}, ${due}, ${c.amount}, '', ${actor.id})
+      on conflict (apartment_id, billing_month) where kind = 'monthly' do nothing
+      returning id`;
+    if (ins.length) {
+      created++;
+      await lockApartment(tx, c.apartmentId);
+      creditApplied += await applyApartmentCredit(tx, c.apartmentId);
+    }
+  }
+  return { month: m, created, creditApplied };
+}
+
+/** Idempotent: safe to run any number of times (manual button for one month). */
 export async function generateMonthlyCharges(
   sql: Sql,
   actor: Actor,
@@ -94,46 +135,47 @@ export async function generateMonthlyCharges(
 ): Promise<GenerateResult> {
   requireRole(actor, "treasurer");
   if (!isIsoDate(month)) throw new AppError("invalid_date");
-  const m = monthStart(month);
   return sql.begin(async (tx) => {
-    // Serialize concurrent generators for the whole building.
-    await tx`select pg_advisory_xact_lock(hashtext('generate_monthly_charges'))`;
-    const settings = await getSettings(tx);
-    const rates = (
-      await tx<{ apartment_id: string | null; amount: number; effective_from: string }[]>`
-        select apartment_id, amount, effective_from from fee_rates`
-    ).map<FeeRate>((r) => ({ apartmentId: r.apartment_id, amount: r.amount, effectiveFrom: r.effective_from }));
-    const apts = await tx<{ id: string; billing_start_month: string; archived_at: string | null }[]>`
-      select id, billing_start_month, archived_at from apartments`;
-    const existing = new Set(
-      (await tx<{ apartment_id: string }[]>`
-        select apartment_id from charges where kind = 'monthly' and billing_month = ${m}`).map((r) => r.apartment_id),
-    );
-    const plan = planMonthlyCharges(
-      apts.map((a) => ({ id: a.id, billingStartMonth: a.billing_start_month, archivedAt: a.archived_at })),
-      rates,
-      m,
-      existing,
-    );
-    const due = dayOfMonth(m, settings.due_day);
-    let created = 0;
-    let creditApplied = 0;
-    for (const c of plan) {
-      const ins = await tx`
-        insert into charges (apartment_id, kind, billing_month, due_date, amount, description, created_by)
-        values (${c.apartmentId}, 'monthly', ${m}, ${due}, ${c.amount}, '', ${actor.id})
-        on conflict (apartment_id, billing_month) where kind = 'monthly' do nothing
-        returning id`;
-      if (ins.length) {
-        created++;
-        await lockApartment(tx, c.apartmentId);
-        creditApplied += await applyApartmentCredit(tx, c.apartmentId);
-      }
-    }
+    await tx`select pg_advisory_xact_lock(hashtext(${GEN_LOCK}))`;
+    const r = await generateMonthInTx(tx, actor, month);
     await tx`insert into job_runs (job, month, created_count, credit_applied, triggered_by)
-             values ('monthly_charges', ${m}, ${created}, ${creditApplied}, ${triggeredBy})`;
-    if (created) await audit(tx, actor, "generate", "charges", null, { month: m, created, creditApplied, triggeredBy });
-    return { month: m, created, creditApplied };
+             values ('monthly_charges', ${r.month}, ${r.created}, ${r.creditApplied}, ${triggeredBy})`;
+    if (r.created) await audit(tx, actor, "generate", "charges", null, { ...r, triggeredBy });
+    return r;
+  });
+}
+
+/**
+ * Bring monthly charges up to date: every billable month from each apartment's billing start
+ * through the current month. Used when an apartment is added, when a fee is added, and by cron.
+ * Idempotent (existing months are skipped; the unique index guarantees no duplicates).
+ */
+export async function catchUpChargesInTx(tx: Tx, actor: Actor, today: string, onlyApartment?: string): Promise<GenerateResult> {
+  await tx`select pg_advisory_xact_lock(hashtext(${GEN_LOCK}))`;
+  const [{ first }] = await tx<{ first: string | null }[]>`
+    select min(billing_start_month) as first from apartments
+    where ${onlyApartment ?? null}::uuid is null or id = ${onlyApartment ?? null}::uuid`;
+  const current = monthStart(today);
+  let created = 0;
+  let creditApplied = 0;
+  if (first) {
+    for (let m = first; m <= current; m = addMonths(m, 1)) {
+      const r = await generateMonthInTx(tx, actor, m, onlyApartment);
+      created += r.created;
+      creditApplied += r.creditApplied;
+    }
+  }
+  if (created) await audit(tx, actor, "generate", "charges", onlyApartment ?? null, { upTo: current, created, creditApplied });
+  return { month: current, created, creditApplied };
+}
+
+export async function catchUpCharges(sql: Sql, actor: Actor, today: string, triggeredBy: "cron" | "manual") {
+  requireRole(actor, "treasurer");
+  return sql.begin(async (tx) => {
+    const r = await catchUpChargesInTx(tx, actor, today);
+    await tx`insert into job_runs (job, month, created_count, credit_applied, triggered_by)
+             values ('monthly_charges', ${r.month}, ${r.created}, ${r.creditApplied}, ${triggeredBy})`;
+    return r;
   });
 }
 

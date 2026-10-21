@@ -5,7 +5,7 @@ import { canFeeStartIn } from "@/lib/core/accounting";
 import { isIsoDate, monthStart } from "@/lib/core/dates";
 import { normalizePhone } from "@/lib/core/phone";
 import { AppError, audit, getSettings, isUniqueViolation, requireRole, type Actor, type Settings } from "./common";
-import { applyApartmentCredit, generatedMonths } from "./ledger";
+import { applyApartmentCredit, catchUpChargesInTx, generatedMonths } from "./ledger";
 
 // ------------------------------------------------------------------ settings
 
@@ -62,6 +62,7 @@ export async function addFee(
   sql: Sql,
   actor: Actor,
   input: { apartmentId: string | null; amount: number; effectiveFrom: string; note: string },
+  today?: string,
 ) {
   requireRole(actor, "admin");
   if (!isIsoDate(input.effectiveFrom)) throw new AppError("invalid_date");
@@ -70,11 +71,15 @@ export async function addFee(
   const gen = await generatedMonths(sql);
   if (!canFeeStartIn(m, gen)) throw new AppError("fee_month_generated");
   try {
-    const [r] = await sql<{ id: string }[]>`
-      insert into fee_rates (apartment_id, amount, effective_from, note, created_by)
-      values (${input.apartmentId}, ${input.amount}, ${m}, ${input.note.trim()}, ${actor.id}) returning id`;
-    await audit(sql, actor, "create", "fee_rate", r.id, { ...input, effectiveFrom: m });
-    return r.id;
+    return await sql.begin(async (tx) => {
+      const [r] = await tx<{ id: string }[]>`
+        insert into fee_rates (apartment_id, amount, effective_from, note, created_by)
+        values (${input.apartmentId}, ${input.amount}, ${m}, ${input.note.trim()}, ${actor.id}) returning id`;
+      await audit(tx, actor, "create", "fee_rate", r.id, { ...input, effectiveFrom: m });
+      // A fee effective now (or earlier) bills apartments for the current month immediately.
+      if (today && m <= monthStart(today)) await catchUpChargesInTx(tx, actor, today, input.apartmentId ?? undefined);
+      return r.id;
+    });
   } catch (e) {
     if (isUniqueViolation(e)) throw new AppError("fee_exists");
     throw e;
@@ -90,7 +95,13 @@ export interface ApartmentInput {
   notes: string;
 }
 
-export async function createApartment(sql: Sql, actor: Actor, input: ApartmentInput, owner?: OwnerInput & { startDate: string }) {
+export async function createApartment(
+  sql: Sql,
+  actor: Actor,
+  input: ApartmentInput,
+  owner?: OwnerInput & { startDate: string },
+  today?: string,
+) {
   requireRole(actor, "treasurer");
   if (!input.number.trim()) throw new AppError("number_required");
   if (!isIsoDate(input.billingStartMonth)) throw new AppError("invalid_date");
@@ -107,6 +118,8 @@ export async function createApartment(sql: Sql, actor: Actor, input: ApartmentIn
                  values (${a.id}, ${ownerId}, ${owner.startDate})`;
         await audit(tx, actor, "assign_owner", "apartment", a.id, { ownerId, ...owner });
       }
+      // Charge the apartment right away for every month from billing start to now.
+      if (today) await catchUpChargesInTx(tx, actor, today, a.id);
       return a.id;
     });
   } catch (e) {
@@ -115,7 +128,7 @@ export async function createApartment(sql: Sql, actor: Actor, input: ApartmentIn
   }
 }
 
-export async function updateApartment(sql: Sql, actor: Actor, id: string, input: ApartmentInput) {
+export async function updateApartment(sql: Sql, actor: Actor, id: string, input: ApartmentInput, today?: string) {
   requireRole(actor, "treasurer");
   if (!input.number.trim()) throw new AppError("number_required");
   try {
@@ -124,12 +137,13 @@ export async function updateApartment(sql: Sql, actor: Actor, id: string, input:
       if (!before) throw new AppError("not_found");
       const newStart = monthStart(input.billingStartMonth);
       if (newStart !== before.billing_start_month) {
-        const [c] = await tx<{ n: number }[]>`select count(*)::int as n from charges where apartment_id = ${id} and kind = 'monthly'`;
+        const [c] = await tx<{ n: number }[]>`select count(*)::int as n from charges where apartment_id = ${id} and kind = 'monthly' and status = 'active'`;
         if (c.n > 0) throw new AppError("billing_start_locked");
       }
       await tx`update apartments set number = ${input.number.trim()}, floor = ${input.floor},
                billing_start_month = ${newStart}, notes = ${input.notes.trim()} where id = ${id}`;
       await audit(tx, actor, "update", "apartment", id, { before, after: input });
+      if (today) await catchUpChargesInTx(tx, actor, today, id);
     });
   } catch (e) {
     if (isUniqueViolation(e, "apartments_number_uq")) throw new AppError("apartment_exists");
