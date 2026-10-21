@@ -84,6 +84,7 @@ const en: Dict = {
   },
   dashboard: {
     fund: "Fund balance",
+    fundOpening: "Opening balance {amount} + all collections − all expenses",
     fundHint: "Actual cash on hand",
     dues: "Outstanding dues",
     duesHint: "Owed by apartments — never added to the fund",

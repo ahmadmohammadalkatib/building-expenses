@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser, can } from "@/lib/auth";
 import { db } from "@/lib/db/client";
-import { getDict } from "@/lib/i18n";
+import { fmt, getDict } from "@/lib/i18n";
 import { formatters } from "@/lib/format";
 import { getSettings, today } from "@/lib/services/common";
 import { dashboard } from "@/lib/services/reports";
@@ -51,7 +51,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         ) : null}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label={t.dashboard.fund} value={<Num>{f.money(d.cash)}</Num>} hint={t.dashboard.fundHint} tone={d.cash < 0 ? "danger" : undefined} />
+          <Stat label={t.dashboard.fund} value={<Num>{f.money(d.cash)}</Num>} hint={s.opening_date ? fmt(t.dashboard.fundOpening, { amount: f.money(s.opening_balance) }) : t.dashboard.fundHint} tone={d.cash < 0 ? "danger" : undefined} />
           <Stat label={t.dashboard.dues} value={<Num>{f.money(d.dues)}</Num>} hint={t.dashboard.duesHint} tone={d.dues > 0 ? "danger" : undefined} />
           <Stat label={t.dashboard.collected} value={<Num>{f.money(d.month.collected)}</Num>} hint={`${t.dashboard.unpaidThisMonth}: ${d.counts.unpaid_this_month} / ${d.counts.apartments}`} />
           <Stat label={t.dashboard.spent} value={<Num>{f.money(d.month.spent)}</Num>} hint={d.credit ? `${t.dashboard.credit}: ${f.money(d.credit)}` : undefined} />
