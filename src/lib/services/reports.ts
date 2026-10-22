@@ -312,11 +312,13 @@ export async function apartmentList(sql: Db, opts: { q?: string; archived?: bool
   const q = (opts.q ?? "").trim();
   const like = `%${q}%`;
   return sql<
-    { id: string; number: string; floor: number | null; archived_at: string | null; owner_name: string | null; phone: string | null; outstanding: number; credit: number }[]
+    { id: string; number: string; floor: number | null; archived_at: string | null; owner_name: string | null; phone: string | null; outstanding: number; credit: number; deletable: boolean }[]
   >`
     select a.id, a.number, a.floor, a.archived_at, o.full_name as owner_name, o.phone,
       coalesce((select sum(outstanding) from charge_balances cb where cb.apartment_id = a.id and cb.status = 'active'), 0)::bigint as outstanding,
-      coalesce((select sum(unallocated) from payment_balances pb where pb.apartment_id = a.id and pb.status = 'active'), 0)::bigint as credit
+      coalesce((select sum(unallocated) from payment_balances pb where pb.apartment_id = a.id and pb.status = 'active'), 0)::bigint as credit,
+      not exists (select 1 from payments p where p.apartment_id = a.id)
+        and not exists (select 1 from adjustments ad where ad.apartment_id = a.id) as deletable
     from apartments a
     left join apartment_owners ao on ao.apartment_id = a.id and ao.end_date is null
     left join owners o on o.id = ao.owner_id

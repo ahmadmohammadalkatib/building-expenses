@@ -204,6 +204,42 @@ export async function setApartmentArchived(sql: Sql, actor: Actor, id: string, a
   await audit(sql, actor, archivedOn ? "archive" : "unarchive", "apartment", id, { archivedOn });
 }
 
+/** True while nothing was ever paid or adjusted on the apartment (any status) — the only case it may be deleted. */
+export async function apartmentDeletable(sql: Db, id: string): Promise<boolean> {
+  const [r] = await sql<{ ok: boolean }[]>`
+    select not exists (select 1 from payments where apartment_id = ${id})
+       and not exists (select 1 from adjustments where apartment_id = ${id}) as ok`;
+  return r.ok;
+}
+
+/**
+ * Delete an apartment entered by mistake, with its unpaid charges, its own fee rates and ownership rows.
+ * Refused once any payment or adjustment exists (archive it instead); the DB trigger enforces the same rule.
+ */
+export async function deleteApartment(sql: Sql, actor: Actor, id: string, confirmNumber: string) {
+  requireRole(actor, "treasurer");
+  await sql.begin(async (tx) => {
+    const [a] = await tx<{ number: string }[]>`select number from apartments where id = ${id} for update`;
+    if (!a) throw new AppError("not_found");
+    if (confirmNumber.trim().toLowerCase() !== a.number.toLowerCase()) throw new AppError("confirm_mismatch");
+    if (!(await apartmentDeletable(tx, id))) throw new AppError("apartment_has_payments");
+    const [c] = await tx<{ n: number; total: number }[]>`
+      select count(*)::int as n, coalesce(sum(amount) filter (where status = 'active'), 0)::bigint as total
+      from charges where apartment_id = ${id}`;
+    const owners = await tx<{ owner_id: string }[]>`select owner_id from apartment_owners where apartment_id = ${id}`;
+    await audit(tx, actor, "delete", "apartment", id, { number: a.number, charges: c.n, chargedTotal: c.total });
+    await tx`select set_config('app.deleting_apartment', ${id}, true)`;
+    await tx`delete from charges where apartment_id = ${id}`;
+    await tx`delete from fee_rates where apartment_id = ${id}`;
+    await tx`delete from apartment_owners where apartment_id = ${id}`;
+    for (const o of owners) {
+      await tx`delete from owners where id = ${o.owner_id}
+               and not exists (select 1 from apartment_owners where owner_id = ${o.owner_id})`;
+    }
+    await tx`delete from apartments where id = ${id}`;
+  });
+}
+
 export interface OwnerInput {
   fullName: string;
   phone: string;

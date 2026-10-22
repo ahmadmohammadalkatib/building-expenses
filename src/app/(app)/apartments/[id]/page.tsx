@@ -9,7 +9,7 @@ import { apartmentDetail, apartmentStatement, chargeList } from "@/lib/services/
 import { whatsappLink } from "@/lib/core/phone";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { Dialog } from "@/components/dialog";
-import { Badge, Card, Empty, Field, Input, LINK, LinkButton, Num, PageHeader, Stat, Table, Td, Textarea, Th } from "@/components/ui";
+import { Alert, Badge, Card, Empty, Field, Input, LINK, LinkButton, Num, PageHeader, Stat, Table, Td, Th } from "@/components/ui";
 import { ChargeStatus } from "@/components/status";
 import {
   ArchiveIcon,
@@ -25,20 +25,24 @@ import {
   UsersIcon,
   WalletIcon,
 } from "@/components/icons";
-import { archiveAction, changeOwnerAction, updateApartmentAction, updateOwnerAction } from "../actions";
+import { apartmentDeletable } from "@/lib/services/setup";
+import { archiveAction, changeOwnerAction, updateOwnerAction } from "../actions";
+import { DeleteApartmentDialog, EditApartmentDialog } from "../apartment-dialogs";
 
-export default async function ApartmentPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ApartmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ edit?: string }> }) {
   const user = await requireUser();
   const { id } = await params;
+  const { edit } = await searchParams;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const { t, locale } = await getDict();
   const f = formatters(locale);
   const sql = db();
   const d0 = await today(sql);
-  const [detail, statement, charges] = await Promise.all([
+  const [detail, statement, charges, deletable] = await Promise.all([
     apartmentDetail(sql, id),
     apartmentStatement(sql, id),
     chargeList(sql, { apartmentId: id }, d0),
+    apartmentDeletable(sql, id),
   ]);
   if (!detail) notFound();
   const { apt, owner, owners } = detail;
@@ -73,6 +77,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               {reminder ? (
                 <LinkButton href={reminder} target="_blank" variant="secondary"><MessageIcon />{t.apartments.remind}</LinkButton>
               ) : null}
+              <EditApartmentDialog t={t} apt={apt} defaultOpen={edit === "1"} />
               <LinkButton href={`/dues/new?apartment=${apt.id}`} variant="secondary"><PlusIcon />{t.apartments.addCharge}</LinkButton>
               <LinkButton href={`/payments/new?apartment=${apt.id}`}><WalletIcon />{t.apartments.recordPayment}</LinkButton>
             </>
@@ -197,33 +202,35 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
 
         {canEdit ? (
           <div className="no-print grid gap-6 lg:grid-cols-2">
-            <Card title={t.common.edit}>
-              <ActionForm action={updateApartmentAction}>
-                <input type="hidden" name="id" value={apt.id} />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label={t.apartments.number}><Input name="number" defaultValue={apt.number} required /></Field>
-                  <Field label={t.apartments.floor}><Input name="floor" type="number" defaultValue={apt.floor ?? ""} /></Field>
-                  <Field label={t.apartments.billingStart} help={t.apartments.billingStartHelp} className="sm:col-span-2">
-                    <Input name="billing_start" type="month" defaultValue={apt.billing_start_month.slice(0, 7)} required />
-                  </Field>
-                  <Field label={t.common.notes} className="sm:col-span-2"><Textarea name="notes" defaultValue={apt.notes} /></Field>
-                </div>
-                <div className="flex justify-end">
-                  <SubmitButton>{t.common.save}</SubmitButton>
-                </div>
-              </ActionForm>
-              <div className="mt-5 border-t border-border pt-5">
-                <ActionForm action={archiveAction}>
+            <Card title={t.apartments.manage}>
+              <div className="divide-y divide-border">
+                <ActionForm action={archiveAction} className="pb-5">
                   <input type="hidden" name="id" value={apt.id} />
                   <input type="hidden" name="archive" value={apt.archived_at ? "0" : "1"} />
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-xs leading-relaxed text-muted">{t.apartments.archiveHelp}</p>
+                    <div>
+                      <div className="text-sm font-medium">{apt.archived_at ? t.apartments.unarchive : t.apartments.archive}</div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted">{t.apartments.archiveHelp}</p>
+                    </div>
                     <SubmitButton variant="secondary">
                       {apt.archived_at ? <UnarchiveIcon /> : <ArchiveIcon />}
                       {apt.archived_at ? t.apartments.unarchive : t.apartments.archive}
                     </SubmitButton>
                   </div>
                 </ActionForm>
+                <div className="pt-5">
+                  {deletable ? (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-medium text-danger">{t.apartments.delete}</div>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted">{t.apartments.deleteHelp}</p>
+                      </div>
+                      <DeleteApartmentDialog t={t} id={apt.id} number={apt.number} />
+                    </div>
+                  ) : (
+                    <Alert tone="neutral" title={t.apartments.delete}>{t.apartments.deleteBlocked}</Alert>
+                  )}
+                </div>
               </div>
             </Card>
             <Card

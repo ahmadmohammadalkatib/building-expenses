@@ -6,7 +6,7 @@ import { db } from "@/lib/db/client";
 import { actor, run, str } from "@/lib/actions";
 import type { FormState } from "@/components/forms";
 import { getDict } from "@/lib/i18n";
-import { changeOwner, createApartment, setApartmentArchived, updateApartment, updateOwner } from "@/lib/services/setup";
+import { changeOwner, createApartment, deleteApartment, setApartmentArchived, updateApartment, updateOwner } from "@/lib/services/setup";
 import { today } from "@/lib/services/common";
 
 function aptInput(fd: FormData) {
@@ -58,6 +58,17 @@ export async function archiveAction(_: FormState, fd: FormData): Promise<FormSta
     revalidatePath("/apartments");
     return { ok: true, message: t.common.saved };
   });
+}
+
+export async function deleteApartmentAction(_: FormState, fd: FormData): Promise<FormState> {
+  const number = str(fd, "confirm").trim();
+  const res = await run(async () => {
+    const a = await actor();
+    await deleteApartment(db(), a, str(fd, "id"), number);
+  });
+  if (res?.error) return res;
+  revalidatePath("/", "layout");
+  redirect(`/apartments?deleted=${encodeURIComponent(number)}`);
 }
 
 export async function changeOwnerAction(_: FormState, fd: FormData): Promise<FormState> {

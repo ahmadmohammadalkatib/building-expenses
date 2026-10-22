@@ -14,7 +14,7 @@ import {
   voidPayment,
   type NewPayment,
 } from "@/lib/services/ledger";
-import { addFee, createApartment, deleteFee, setOpeningArrears, updateFee, updateSettings } from "@/lib/services/setup";
+import { addFee, createApartment, deleteApartment, deleteFee, setOpeningArrears, updateFee, updateSettings } from "@/lib/services/setup";
 import { recordExpense, voidExpense } from "@/lib/services/expenses";
 import {
   apartmentStatement,
@@ -360,5 +360,35 @@ describe("acceptance", () => {
     await deleteFee(sql, ADMIN, f, true, TODAY);
     expect(await amounts()).toEqual([10000, 10000]);
     expect(await aptOutstanding(a)).toBe(0);
+  });
+
+  it("AC-24 an apartment can be deleted only while nothing was paid or adjusted on it", async () => {
+    const owner = { fullName: "Entered by mistake", phone: "", email: "", notes: "", startDate: "2026-09-01" };
+    const num = `D${++aptSeq}`;
+    const a = await createApartment(sql, ADMIN, { number: num, floor: null, billingStartMonth: "2026-09-01", notes: "" }, owner, TODAY);
+    expect((await sql`select 1 from charges where apartment_id = ${a}`).length).toBeGreaterThan(0); // charged on create
+    // charges alone are still never deletable
+    await expect(sql`delete from charges where apartment_id = ${a}`).rejects.toThrow(/cannot be deleted/);
+    await expect(deleteApartment(sql, ADMIN, a, "wrong")).rejects.toThrow("confirm_mismatch");
+
+    await deleteApartment(sql, ADMIN, a, num);
+    expect((await sql`select 1 from apartments where id = ${a}`).length).toBe(0);
+    expect((await sql`select 1 from charges where apartment_id = ${a}`).length).toBe(0);
+    expect((await sql`select 1 from owners where full_name = ${owner.fullName}`).length).toBe(0);
+    const [log] = await sql<{ action: string }[]>`
+      select action from audit_log where entity = 'apartment' and entity_id = ${a} order by id desc limit 1`;
+    expect(log.action).toBe("delete");
+
+    const paidNum = `D${++aptSeq}`;
+    const b = await createApartment(sql, ADMIN, { number: paidNum, floor: null, billingStartMonth: "2026-09-01", notes: "" }, undefined, TODAY);
+    await pay(b, 1000, "2026-10-01");
+    await expect(deleteApartment(sql, ADMIN, b, paidNum)).rejects.toThrow("apartment_has_payments");
+    // the database refuses too, even if the deletion flag is set by hand
+    await expect(
+      sql.begin(async (tx) => {
+        await tx`select set_config('app.deleting_apartment', ${b}, true)`;
+        await tx`delete from charges where apartment_id = ${b}`;
+      }),
+    ).rejects.toThrow(/cannot be deleted/);
   });
 });

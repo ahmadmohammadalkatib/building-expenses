@@ -24,6 +24,7 @@ export function Dialog({
   description,
   closeLabel,
   tone,
+  defaultOpen,
   children,
 }: {
   label: ReactNode;
@@ -34,10 +35,12 @@ export function Dialog({
   description?: ReactNode;
   closeLabel: string;
   tone?: "danger";
+  /** Open on first render (e.g. a link with ?edit=1) */
+  defaultOpen?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [generation, setGeneration] = useState(0);
   const titleId = useId();
 
